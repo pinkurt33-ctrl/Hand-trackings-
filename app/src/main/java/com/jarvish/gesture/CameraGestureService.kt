@@ -74,19 +74,31 @@ class CameraGestureService : LifecycleService() {
     }
 
     private fun setupHandLandmarker() {
-        val baseOptions = BaseOptions.builder()
-            .setModelAssetPath("hand_landmarker.task")
-            .build()
+        try {
+            val baseOptions = BaseOptions.builder()
+                .setModelAssetPath("hand_landmarker.task")
+                .build()
 
-        val options = HandLandmarker.HandLandmarkerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(RunningMode.LIVE_STREAM)
-            .setNumHands(1)
-            .setResultListener(::onHandResult)
-            .setErrorListener { e -> Log.e(TAG, "HandLandmarker error: ${e.message}") }
-            .build()
+            val options = HandLandmarker.HandLandmarkerOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setRunningMode(RunningMode.LIVE_STREAM)
+                .setNumHands(1)
+                .setResultListener(::onHandResult)
+                .setErrorListener { e -> Log.e(TAG, "HandLandmarker error: ${e.message}") }
+                .build()
 
-        handLandmarker = HandLandmarker.createFromOptions(this, options)
+            handLandmarker = HandLandmarker.createFromOptions(this, options)
+            showToast("Jarvish Gesture: model load ho gaya")
+        } catch (e: Exception) {
+            Log.e(TAG, "Model load FAILED: ${e.message}", e)
+            showToast("Jarvish ERROR: model load nahi hua - ${e.message}")
+        }
+    }
+
+    private fun showToast(message: String) {
+        android.os.Handler(mainLooper).post {
+            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun startCamera() {
