@@ -20,7 +20,6 @@ import java.io.ByteArrayOutputStream
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.camera.core.ImageProxyKt
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
@@ -132,7 +131,7 @@ class CameraGestureService : LifecycleService() {
     private fun processFrame(imageProxy: ImageProxy) {
         try {
             val rotation = imageProxy.imageInfo.rotationDegrees
-            val rawBitmap = ImageProxyKt.toBitmap(imageProxy)
+            val rawBitmap = imageProxy.toBitmap()
             val bitmap = if (rotation == 0) {
                 rawBitmap
             } else {
