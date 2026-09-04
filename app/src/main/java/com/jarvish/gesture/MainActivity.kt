@@ -1,44 +1,75 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="24dp">
+package com.jarvish.gesture
 
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Jarvish Gesture Control"
-        android:textSize="20sp"
-        android:layout_marginBottom="24dp" />
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
-    <Button
-        android:id="@+id/btnGrantPermission"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="1. Camera Permission Do" />
+class MainActivity : AppCompatActivity() {
 
-    <Button
-        android:id="@+id/btnEnableAccessibility"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="2. Accessibility Service Chalu Karo" />
+    private val CAMERA_PERMISSION_CODE = 100
 
-    <Button
-        android:id="@+id/btnStartService"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="3. Gesture Tracking Start Karo" />
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-    <Button
-        android:id="@+id/btnStopService"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Stop" />
+        val statusText = findViewById<TextView>(R.id.statusText)
+        val btnPermission = findViewById<Button>(R.id.btnGrantPermission)
+        val btnAccessibility = findViewById<Button>(R.id.btnEnableAccessibility)
+        val btnStart = findViewById<Button>(R.id.btnStartService)
+        val btnStop = findViewById<Button>(R.id.btnStopService)
 
-</LinearLayout>
+        btnPermission.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE
+                )
+            } else {
+                Toast.makeText(this, "Camera permission pehle se hai", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnAccessibility.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
+        btnStart.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                Toast.makeText(this, "Pehle camera permission do", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val serviceIntent = Intent(this, CameraGestureService::class.java)
+            ContextCompat.startForegroundService(this, serviceIntent)
+            statusText.text = "Gesture tracking chalu ho gaya"
+        }
+
+        btnStop.setOnClickListener {
+            stopService(Intent(this, CameraGestureService::class.java))
+            statusText.text = "Gesture tracking band ho gaya"
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Camera permission mil gayi", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Camera permission ke bina gesture control kaam nahi karega", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+}
