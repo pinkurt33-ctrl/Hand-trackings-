@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Jarvish Gesture</string>
+    <string name="accessibility_service_description">Jarvish ko scroll aur tap jaise actions perform karne deta hai jab hand gesture detect ho.</string>
+    <string name="notif_channel_name">Gesture Tracking</string>
+    <string name="notif_title">Jarvish Gesture chalu hai</string>
+    <string name="notif_text">Camera se hand gesture track ho raha hai</string>
+</resources>
