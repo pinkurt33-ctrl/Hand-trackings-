@@ -20,6 +20,7 @@ import java.io.ByteArrayOutputStream
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.ImageProxyKt
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
@@ -43,6 +44,8 @@ class CameraGestureService : LifecycleService() {
 
     private var lastActionTime = 0L
     private val ACTION_COOLDOWN_MS = 800
+    private var handEverDetected = false
+    private var frameErrorShown = false
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +111,7 @@ class CameraGestureService : LifecycleService() {
 
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
 
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -128,48 +132,35 @@ class CameraGestureService : LifecycleService() {
     private fun processFrame(imageProxy: ImageProxy) {
         try {
             val rotation = imageProxy.imageInfo.rotationDegrees
-            val bitmap = yuv420ToBitmap(imageProxy, rotation)
-            if (bitmap != null) {
-                val mpImage = BitmapImageBuilder(bitmap).build()
-                handLandmarker.detectAsync(mpImage, System.currentTimeMillis())
+            val rawBitmap = ImageProxyKt.toBitmap(imageProxy)
+            val bitmap = if (rotation == 0) {
+                rawBitmap
+            } else {
+                val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
             }
+            val mpImage = BitmapImageBuilder(bitmap).build()
+            handLandmarker.detectAsync(mpImage, System.currentTimeMillis())
         } catch (e: Exception) {
-            Log.e(TAG, "Frame processing failed: ${e.message}")
+            Log.e(TAG, "Frame processing failed: ${e.message}", e)
+            if (!frameErrorShown) {
+                frameErrorShown = true
+                showToast("Jarvish ERROR: frame process fail - ${e.message}")
+            }
         } finally {
             imageProxy.close()
         }
     }
 
-    private fun yuv420ToBitmap(imageProxy: ImageProxy, rotationDegrees: Int): Bitmap? {
-        val image = imageProxy.image ?: return null
-
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 90, out)
-        val jpegBytes = out.toByteArray()
-        val rawBitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return null
-
-        if (rotationDegrees == 0) return rawBitmap
-        val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-        return Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
-    }
-
     private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
         if (result.landmarks().isEmpty()) return
         val landmarks = result.landmarks()[0]
+
+        if (!handEverDetected) {
+            handEverDetected = true
+            showToast("Haath dikh gaya! Ab gesture try kar")
+        }
+
         val gesture = classifier.classify(landmarks)
 
         val now = System.currentTimeMillis()
