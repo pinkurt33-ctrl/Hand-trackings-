@@ -6,11 +6,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
 import android.view.KeyEvent
 import java.io.ByteArrayOutputStream
@@ -112,7 +115,8 @@ class CameraGestureService : LifecycleService() {
 
     private fun processFrame(imageProxy: ImageProxy) {
         try {
-            val bitmap = yuv420ToBitmap(imageProxy)
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            val bitmap = yuv420ToBitmap(imageProxy, rotation)
             if (bitmap != null) {
                 val mpImage = BitmapImageBuilder(bitmap).build()
                 handLandmarker.detectAsync(mpImage, System.currentTimeMillis())
@@ -124,7 +128,7 @@ class CameraGestureService : LifecycleService() {
         }
     }
 
-    private fun yuv420ToBitmap(imageProxy: ImageProxy): Bitmap? {
+    private fun yuv420ToBitmap(imageProxy: ImageProxy, rotationDegrees: Int): Bitmap? {
         val image = imageProxy.image ?: return null
 
         val yBuffer = image.planes[0].buffer
@@ -144,7 +148,11 @@ class CameraGestureService : LifecycleService() {
         val out = ByteArrayOutputStream()
         yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 90, out)
         val jpegBytes = out.toByteArray()
-        return BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+        val rawBitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return null
+
+        if (rotationDegrees == 0) return rawBitmap
+        val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+        return Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
     }
 
     private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
@@ -161,6 +169,7 @@ class CameraGestureService : LifecycleService() {
 
     private fun handleGesture(gesture: Gesture) {
         Log.d(TAG, "Gesture detected: $gesture")
+        vibrateFeedback()
         val a11yService = GestureAccessibilityService.instance
 
         when (gesture) {
@@ -187,6 +196,13 @@ class CameraGestureService : LifecycleService() {
         val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
         audioManager.dispatchMediaKeyEvent(eventDown)
         audioManager.dispatchMediaKeyEvent(eventUp)
+    }
+
+    private fun vibrateFeedback() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
     }
 
     override fun onDestroy() {
