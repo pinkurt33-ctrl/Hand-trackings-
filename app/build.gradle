@@ -48,4 +48,4 @@ dependencies {
 
     implementation 'androidx.lifecycle:lifecycle-service:2.6.1'
 
-    implementation 'com.google.mediapipe:tasks-vision
+    implementation 'com.google.mediapipe:tasks-vision:0.10.8'
