@@ -1,5 +1,6 @@
 package com.jarvish.gesture
 
+import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -9,6 +10,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.core.Preview
+import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker
@@ -83,11 +85,11 @@ class CameraTestActivity : AppCompatActivity() {
             try {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
-                runOnUiThread { statusText.text = "Camera chalu - haath dikha" }
+                statusText.text = "Camera chalu - haath dikha"
             } catch (e: Exception) {
-                runOnUiThread { statusText.text = "Camera bind FAILED: ${e.message}" }
+                statusText.text = "Camera bind FAILED: ${e.message}"
             }
-        }, cameraExecutor)
+        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
