@@ -85,4 +85,10 @@ class GestureAccessibilityService : AccessibilityService() {
             lineTo(endX, centerY)
         }
 
-        val gestureBuilder = GestureD
+        val gestureBuilder = GestureDescription.Builder()
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+        val dispatched = dispatchGesture(gestureBuilder.build(), debugCallback, null)
+        Log.d(TAG, "performSwipe dispatch result: $dispatched")
+        if (!dispatched) toast("Jarvish: swipe dispatch FAILED")
+    }
+}
