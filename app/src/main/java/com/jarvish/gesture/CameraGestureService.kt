@@ -172,4 +172,39 @@ class CameraGestureService : LifecycleService() {
             Gesture.OPEN_PALM -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             Gesture.SWIPE_UP -> a11yService?.performScroll(scrollDown = true)
             Gesture.SWIPE_DOWN -> a11yService?.performScroll(scrollDown = false)
-            Gesture.SWIPE_LEFT -> a11yService
+            Gesture.SWIPE_LEFT -> a11yService?.performSwipe(rightToLeft = true)
+            Gesture.SWIPE_RIGHT -> a11yService?.performSwipe(rightToLeft = false)
+            Gesture.POINT -> {
+                val metrics = resources.displayMetrics
+                a11yService?.performTap(metrics.widthPixels / 2f, metrics.heightPixels / 2f)
+            }
+            Gesture.FIST, Gesture.NONE -> { }
+        }
+    }
+
+    private fun sendMediaKey(keyCode: Int) {
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
+        val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
+        audioManager.dispatchMediaKeyEvent(eventDown)
+        audioManager.dispatchMediaKeyEvent(eventUp)
+    }
+
+    private fun vibrateFeedback() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
+        handLandmarker.close()
+    }
+
+    override fun onBind(intent: Intent): IBinder? {
+        super.onBind(intent)
+        return null
+    }
+}
