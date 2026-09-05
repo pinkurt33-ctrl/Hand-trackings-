@@ -22,6 +22,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".CameraTestActivity"
+            android:exported="false" />
+
         <service
             android:name=".CameraGestureService"
             android:foregroundServiceType="camera"
