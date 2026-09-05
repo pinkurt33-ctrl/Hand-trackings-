@@ -85,7 +85,15 @@ class CameraGestureService : LifecycleService() {
                 .setRunningMode(RunningMode.LIVE_STREAM)
                 .setNumHands(1)
                 .setResultListener(::onHandResult)
-                .setErrorListener { e -> Log.e(TAG, "HandLandmarker error: ${e.message}") }
+                .setErrorListener { e ->
+                    isBusy = false
+                    Log.e(TAG, "HandLandmarker error: ${e.message}")
+                    val now = System.currentTimeMillis()
+                    if (now - lastFrameErrorToastTime > 2000) {
+                        lastFrameErrorToastTime = now
+                        showToast("Jarvish LANDMARKER ERROR: ${e.message}")
+                    }
+                }
                 .build()
 
             handLandmarker = HandLandmarker.createFromOptions(this, options)
