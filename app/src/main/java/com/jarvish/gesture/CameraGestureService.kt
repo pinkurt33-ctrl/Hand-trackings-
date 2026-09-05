@@ -4,11 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
 import android.graphics.Matrix
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
@@ -16,12 +12,12 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
 import android.view.KeyEvent
-import java.io.ByteArrayOutputStream
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -42,8 +38,8 @@ class CameraGestureService : LifecycleService() {
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private var lastActionTime = 0L
-    private val ACTION_COOLDOWN_MS = 800
-    private var handEverDetected = false
+    private val ACTION_COOLDOWN_MS = 350
+    @Volatile private var isBusy = false
 
     override fun onCreate() {
         super.onCreate()
@@ -88,25 +84,12 @@ class CameraGestureService : LifecycleService() {
                 .setErrorListener { e ->
                     isBusy = false
                     Log.e(TAG, "HandLandmarker error: ${e.message}")
-                    val now = System.currentTimeMillis()
-                    if (now - lastFrameErrorToastTime > 2000) {
-                        lastFrameErrorToastTime = now
-                        showToast("Jarvish LANDMARKER ERROR: ${e.message}")
-                    }
                 }
                 .build()
 
             handLandmarker = HandLandmarker.createFromOptions(this, options)
-            showToast("Jarvish Gesture: model load ho gaya")
         } catch (e: Exception) {
             Log.e(TAG, "Model load FAILED: ${e.message}", e)
-            showToast("Jarvish ERROR: model load nahi hua - ${e.message}")
-        }
-    }
-
-    private fun showToast(message: String) {
-        android.os.Handler(mainLooper).post {
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -131,14 +114,9 @@ class CameraGestureService : LifecycleService() {
                 cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
             } catch (e: Exception) {
                 Log.e(TAG, "Camera bind failed: ${e.message}")
-                showToast("Jarvish ERROR: camera bind fail - ${e.message}")
             }
-        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+        }, ContextCompat.getMainExecutor(this))
     }
-
-    private var frameErrorShown = false
-    @Volatile private var isBusy = false
-    private var lastFrameErrorToastTime = 0L
 
     private fun processFrame(imageProxy: ImageProxy) {
         if (isBusy) {
@@ -160,40 +138,16 @@ class CameraGestureService : LifecycleService() {
         } catch (e: Exception) {
             Log.e(TAG, "Frame processing failed: ${e.message}", e)
             isBusy = false
-            val now = System.currentTimeMillis()
-            if (now - lastFrameErrorToastTime > 2000) {
-                lastFrameErrorToastTime = now
-                showToast("Jarvish ERROR: frame fail - ${e.message}")
-            }
         } finally {
             imageProxy.close()
         }
     }
-
-    private var lastDebugToastTime = 0L
 
     private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
         isBusy = false
 
         if (result.landmarks().isEmpty()) return
         val landmarks = result.landmarks()[0]
-
-        if (!handEverDetected) {
-            handEverDetected = true
-            showToast("Haath dikh gaya! Ab gesture try kar")
-        }
-
-        val now2 = System.currentTimeMillis()
-        if (now2 - lastDebugToastTime > 1500) {
-            lastDebugToastTime = now2
-            val t = landmarks[4].y() < landmarks[3].y()
-            val i = landmarks[8].y() < landmarks[6].y()
-            val m = landmarks[12].y() < landmarks[10].y()
-            val r = landmarks[16].y() < landmarks[14].y()
-            val p = landmarks[20].y() < landmarks[18].y()
-            val count = listOf(t, i, m, r, p).count { it }
-            showToast("Fingers khuli: $count (T:$t I:$i M:$m R:$r P:$p)")
-        }
 
         val gesture = classifier.classify(landmarks)
 
@@ -205,7 +159,6 @@ class CameraGestureService : LifecycleService() {
     }
 
     private fun handleGesture(gesture: Gesture) {
-        Log.d(TAG, "Gesture detected: $gesture")
         vibrateFeedback()
         val a11yService = GestureAccessibilityService.instance
 
@@ -221,10 +174,6 @@ class CameraGestureService : LifecycleService() {
             }
             Gesture.FIST, Gesture.NONE -> { }
         }
-
-        if (a11yService == null) {
-            Log.w(TAG, "Accessibility service not enabled - scroll/tap actions won't work. Enable it in Settings > Accessibility.")
-        }
     }
 
     private fun sendMediaKey(keyCode: Int) {
@@ -238,7 +187,7 @@ class CameraGestureService : LifecycleService() {
     private fun vibrateFeedback() {
         val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 
