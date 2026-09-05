@@ -44,7 +44,6 @@ class CameraGestureService : LifecycleService() {
     private var lastActionTime = 0L
     private val ACTION_COOLDOWN_MS = 800
     private var handEverDetected = false
-    private var frameErrorShown = false
 
     override fun onCreate() {
         super.onCreate()
@@ -128,6 +127,8 @@ class CameraGestureService : LifecycleService() {
         }, cameraExecutor)
     }
 
+    private var frameErrorShown = false
+
     private fun processFrame(imageProxy: ImageProxy) {
         try {
             val rotation = imageProxy.imageInfo.rotationDegrees
@@ -151,6 +152,8 @@ class CameraGestureService : LifecycleService() {
         }
     }
 
+    private var lastDebugToastTime = 0L
+
     private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
         if (result.landmarks().isEmpty()) return
         val landmarks = result.landmarks()[0]
@@ -158,6 +161,18 @@ class CameraGestureService : LifecycleService() {
         if (!handEverDetected) {
             handEverDetected = true
             showToast("Haath dikh gaya! Ab gesture try kar")
+        }
+
+        val now2 = System.currentTimeMillis()
+        if (now2 - lastDebugToastTime > 1500) {
+            lastDebugToastTime = now2
+            val t = landmarks[4].y() < landmarks[3].y()
+            val i = landmarks[8].y() < landmarks[6].y()
+            val m = landmarks[12].y() < landmarks[10].y()
+            val r = landmarks[16].y() < landmarks[14].y()
+            val p = landmarks[20].y() < landmarks[18].y()
+            val count = listOf(t, i, m, r, p).count { it }
+            showToast("Fingers khuli: $count (T:$t I:$i M:$m R:$r P:$p)")
         }
 
         val gesture = classifier.classify(landmarks)
