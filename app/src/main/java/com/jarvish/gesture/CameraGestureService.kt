@@ -128,8 +128,15 @@ class CameraGestureService : LifecycleService() {
     }
 
     private var frameErrorShown = false
+    @Volatile private var isBusy = false
+    private var lastFrameErrorToastTime = 0L
 
     private fun processFrame(imageProxy: ImageProxy) {
+        if (isBusy) {
+            imageProxy.close()
+            return
+        }
+        isBusy = true
         try {
             val rotation = imageProxy.imageInfo.rotationDegrees
             val rawBitmap = imageProxy.toBitmap()
@@ -143,9 +150,11 @@ class CameraGestureService : LifecycleService() {
             handLandmarker.detectAsync(mpImage, System.currentTimeMillis())
         } catch (e: Exception) {
             Log.e(TAG, "Frame processing failed: ${e.message}", e)
-            if (!frameErrorShown) {
-                frameErrorShown = true
-                showToast("Jarvish ERROR: frame process fail - ${e.message}")
+            isBusy = false
+            val now = System.currentTimeMillis()
+            if (now - lastFrameErrorToastTime > 2000) {
+                lastFrameErrorToastTime = now
+                showToast("Jarvish ERROR: frame fail - ${e.message}")
             }
         } finally {
             imageProxy.close()
@@ -155,6 +164,8 @@ class CameraGestureService : LifecycleService() {
     private var lastDebugToastTime = 0L
 
     private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
+        isBusy = false
+
         if (result.landmarks().isEmpty()) return
         val landmarks = result.landmarks()[0]
 
