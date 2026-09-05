@@ -1,235 +1,70 @@
 package com.jarvish.gesture
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Matrix
-import android.graphics.Rect
-import android.graphics.YuvImage
-import android.media.AudioManager
-import android.os.Build
-import android.os.IBinder
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.util.Log
-import android.view.KeyEvent
-import java.io.ByteArrayOutputStream
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.app.NotificationCompat
-import androidx.lifecycle.LifecycleService
-import com.google.mediapipe.tasks.core.BaseOptions
-import com.google.mediapipe.tasks.vision.core.RunningMode
-import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker
-import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
-import com.google.mediapipe.framework.image.BitmapImageBuilder
-import java.util.concurrent.Executors
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
+import kotlin.math.abs
 
-@androidx.camera.core.ExperimentalGetImage
-class CameraGestureService : LifecycleService() {
+enum class Gesture {
+    OPEN_PALM,      // fingers extended -> Play/Pause
+    FIST,           // closed hand -> no-op / stop
+    SWIPE_UP,       // hand moved up quickly -> scroll up
+    SWIPE_DOWN,     // hand moved down quickly -> scroll down
+    SWIPE_LEFT,     // hand moved left quickly -> previous / back
+    SWIPE_RIGHT,    // hand moved right quickly -> next / forward
+    POINT,          // only index finger extended -> tap/select
+    NONE
+}
 
-    private val TAG = "CameraGestureService"
-    private val CHANNEL_ID = "jarvish_gesture_channel"
-    private val NOTIF_ID = 101
+/**
+ * Takes MediaPipe's 21 hand landmarks per frame and turns them into a Gesture.
+ * Landmark indices (MediaPipe Hand Landmarker):
+ * 0 = wrist, 4 = thumb tip, 8 = index tip, 12 = middle tip, 16 = ring tip, 20 = pinky tip
+ */
+class GestureClassifier {
 
-    private lateinit var handLandmarker: HandLandmarker
-    private val classifier = GestureClassifier()
-    private val cameraExecutor = Executors.newSingleThreadExecutor()
+    // Keep track of recent wrist positions to detect swipes
+    private val positionHistory = ArrayDeque<Pair<Float, Float>>()
+    private val HISTORY_SIZE = 6
+    private val SWIPE_THRESHOLD = 0.18f // normalized (0-1) screen-fraction movement
 
-    private var lastActionTime = 0L
-    private val ACTION_COOLDOWN_MS = 800
-    private var handEverDetected = false
+    fun classify(landmarks: List<NormalizedLandmark>): Gesture {
+        if (landmarks.size < 21) return Gesture.NONE
 
-    override fun onCreate() {
-        super.onCreate()
-        startForeground(NOTIF_ID, buildNotification())
-        setupHandLandmarker()
-        startCamera()
-    }
+        val wrist = landmarks[0]
+        positionHistory.addLast(Pair(wrist.x(), wrist.y()))
+        if (positionHistory.size > HISTORY_SIZE) positionHistory.removeFirst()
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
-        return START_STICKY
-    }
+        // 1. Check for swipe first (fast directional movement)
+        if (positionHistory.size == HISTORY_SIZE) {
+            val (startX, startY) = positionHistory.first()
+            val (endX, endY) = positionHistory.last()
+            val dx = endX - startX
+            val dy = endY - startY
 
-    private fun buildNotification(): android.app.Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, getString(R.string.notif_channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.notif_title))
-            .setContentText(getString(R.string.notif_text))
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun setupHandLandmarker() {
-        try {
-            val baseOptions = BaseOptions.builder()
-                .setModelAssetPath("hand_landmarker.task")
-                .build()
-
-            val options = HandLandmarker.HandLandmarkerOptions.builder()
-                .setBaseOptions(baseOptions)
-                .setRunningMode(RunningMode.LIVE_STREAM)
-                .setNumHands(1)
-                .setResultListener(::onHandResult)
-                .setErrorListener { e -> Log.e(TAG, "HandLandmarker error: ${e.message}") }
-                .build()
-
-            handLandmarker = HandLandmarker.createFromOptions(this, options)
-            showToast("Jarvish Gesture: model load ho gaya")
-        } catch (e: Exception) {
-            Log.e(TAG, "Model load FAILED: ${e.message}", e)
-            showToast("Jarvish ERROR: model load nahi hua - ${e.message}")
-        }
-    }
-
-    private fun showToast(message: String) {
-        android.os.Handler(mainLooper).post {
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-
-            val imageAnalysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .build()
-
-            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                processFrame(imageProxy)
+            if (abs(dx) > SWIPE_THRESHOLD && abs(dx) > abs(dy)) {
+                positionHistory.clear()
+                return if (dx > 0) Gesture.SWIPE_RIGHT else Gesture.SWIPE_LEFT
             }
-
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
-            } catch (e: Exception) {
-                Log.e(TAG, "Camera bind failed: ${e.message}")
+            if (abs(dy) > SWIPE_THRESHOLD && abs(dy) > abs(dx)) {
+                positionHistory.clear()
+                return if (dy > 0) Gesture.SWIPE_DOWN else Gesture.SWIPE_UP
             }
-        }, cameraExecutor)
-    }
-
-    private var frameErrorShown = false
-
-    private fun processFrame(imageProxy: ImageProxy) {
-        try {
-            val rotation = imageProxy.imageInfo.rotationDegrees
-            val rawBitmap = imageProxy.toBitmap()
-            val bitmap = if (rotation == 0) {
-                rawBitmap
-            } else {
-                val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
-            }
-            val mpImage = BitmapImageBuilder(bitmap).build()
-            handLandmarker.detectAsync(mpImage, System.currentTimeMillis())
-        } catch (e: Exception) {
-            Log.e(TAG, "Frame processing failed: ${e.message}", e)
-            if (!frameErrorShown) {
-                frameErrorShown = true
-                showToast("Jarvish ERROR: frame process fail - ${e.message}")
-            }
-        } finally {
-            imageProxy.close()
-        }
-    }
-
-    private var lastDebugToastTime = 0L
-
-    private fun onHandResult(result: HandLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
-        if (result.landmarks().isEmpty()) return
-        val landmarks = result.landmarks()[0]
-
-        if (!handEverDetected) {
-            handEverDetected = true
-            showToast("Haath dikh gaya! Ab gesture try kar")
         }
 
-        val now2 = System.currentTimeMillis()
-        if (now2 - lastDebugToastTime > 1500) {
-            lastDebugToastTime = now2
-            val t = landmarks[4].y() < landmarks[3].y()
-            val i = landmarks[8].y() < landmarks[6].y()
-            val m = landmarks[12].y() < landmarks[10].y()
-            val r = landmarks[16].y() < landmarks[14].y()
-            val p = landmarks[20].y() < landmarks[18].y()
-            val count = listOf(t, i, m, r, p).count { it }
-            showToast("Fingers khuli: $count (T:$t I:$i M:$m R:$r P:$p)")
+        // 2. Check finger states (extended vs curled) for static gestures
+        val thumbExtended = landmarks[4].y() < landmarks[3].y()
+        val indexExtended = landmarks[8].y() < landmarks[6].y()
+        val middleExtended = landmarks[12].y() < landmarks[10].y()
+        val ringExtended = landmarks[16].y() < landmarks[14].y()
+        val pinkyExtended = landmarks[20].y() < landmarks[18].y()
+
+        val extendedCount = listOf(thumbExtended, indexExtended, middleExtended, ringExtended, pinkyExtended)
+            .count { it }
+
+        return when {
+            extendedCount >= 3 -> Gesture.OPEN_PALM
+            extendedCount == 0 -> Gesture.FIST
+            indexExtended && extendedCount == 1 -> Gesture.POINT
+            else -> Gesture.NONE
         }
-
-        val gesture = classifier.classify(landmarks)
-
-        val now = System.currentTimeMillis()
-        if (gesture != Gesture.NONE && now - lastActionTime > ACTION_COOLDOWN_MS) {
-            lastActionTime = now
-            handleGesture(gesture)
-        }
-    }
-
-    private fun handleGesture(gesture: Gesture) {
-        Log.d(TAG, "Gesture detected: $gesture")
-        vibrateFeedback()
-        val a11yService = GestureAccessibilityService.instance
-
-        when (gesture) {
-            Gesture.OPEN_PALM -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-            Gesture.SWIPE_UP -> a11yService?.performScroll(scrollDown = false)
-            Gesture.SWIPE_DOWN -> a11yService?.performScroll(scrollDown = true)
-            Gesture.SWIPE_LEFT -> a11yService?.performSwipe(rightToLeft = true)
-            Gesture.SWIPE_RIGHT -> a11yService?.performSwipe(rightToLeft = false)
-            Gesture.POINT -> {
-                val metrics = resources.displayMetrics
-                a11yService?.performTap(metrics.widthPixels / 2f, metrics.heightPixels / 2f)
-            }
-            Gesture.FIST, Gesture.NONE -> { }
-        }
-
-        if (a11yService == null) {
-            Log.w(TAG, "Accessibility service not enabled - scroll/tap actions won't work. Enable it in Settings > Accessibility.")
-        }
-    }
-
-    private fun sendMediaKey(keyCode: Int) {
-        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
-        val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
-        audioManager.dispatchMediaKeyEvent(eventDown)
-        audioManager.dispatchMediaKeyEvent(eventUp)
-    }
-
-    private fun vibrateFeedback() {
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
-        handLandmarker.close()
-    }
-
-    override fun onBind(intent: Intent): IBinder? {
-        super.onBind(intent)
-        return null
     }
 }
