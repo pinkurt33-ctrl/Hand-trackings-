@@ -25,6 +25,17 @@ class MainActivity : AppCompatActivity() {
         val btnAccessibility = findViewById<Button>(R.id.btnEnableAccessibility)
         val btnStart = findViewById<Button>(R.id.btnStartService)
         val btnStop = findViewById<Button>(R.id.btnStopService)
+        val btnTestCamera = findViewById<Button>(R.id.btnTestCamera)
+
+        btnTestCamera.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                Toast.makeText(this, "Pehle camera permission do", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            startActivity(Intent(this, CameraTestActivity::class.java))
+        }
 
         btnPermission.setOnClickListener {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
