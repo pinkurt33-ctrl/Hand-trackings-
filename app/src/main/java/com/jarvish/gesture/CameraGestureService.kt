@@ -131,8 +131,9 @@ class CameraGestureService : LifecycleService() {
                 cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
             } catch (e: Exception) {
                 Log.e(TAG, "Camera bind failed: ${e.message}")
+                showToast("Jarvish ERROR: camera bind fail - ${e.message}")
             }
-        }, cameraExecutor)
+        }, androidx.core.content.ContextCompat.getMainExecutor(this))
     }
 
     private var frameErrorShown = false
