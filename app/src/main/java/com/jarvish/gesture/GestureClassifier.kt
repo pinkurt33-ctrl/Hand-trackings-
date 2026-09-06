@@ -4,27 +4,21 @@ import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import kotlin.math.abs
 
 enum class Gesture {
-    OPEN_PALM,      // fingers extended -> Play/Pause
-    FIST,           // closed hand -> no-op / stop
-    SWIPE_UP,       // hand moved up quickly -> scroll up
-    SWIPE_DOWN,     // hand moved down quickly -> scroll down
-    SWIPE_LEFT,     // hand moved left quickly -> previous / back
-    SWIPE_RIGHT,    // hand moved right quickly -> next / forward
-    POINT,          // only index finger extended -> tap/select
+    OPEN_PALM,
+    FIST,
+    SWIPE_UP,
+    SWIPE_DOWN,
+    SWIPE_LEFT,
+    SWIPE_RIGHT,
+    POINT,
     NONE
 }
 
-/**
- * Takes MediaPipe's 21 hand landmarks per frame and turns them into a Gesture.
- * Landmark indices (MediaPipe Hand Landmarker):
- * 0 = wrist, 4 = thumb tip, 8 = index tip, 12 = middle tip, 16 = ring tip, 20 = pinky tip
- */
 class GestureClassifier {
 
-    // Keep track of recent wrist positions to detect swipes
     private val positionHistory = ArrayDeque<Pair<Float, Float>>()
-    private val HISTORY_SIZE = 6
-    private val SWIPE_THRESHOLD = 0.18f // normalized (0-1) screen-fraction movement
+    private val HISTORY_SIZE = 3
+    private val SWIPE_THRESHOLD = 0.10f
 
     fun classify(landmarks: List<NormalizedLandmark>): Gesture {
         if (landmarks.size < 21) return Gesture.NONE
@@ -33,7 +27,6 @@ class GestureClassifier {
         positionHistory.addLast(Pair(wrist.x(), wrist.y()))
         if (positionHistory.size > HISTORY_SIZE) positionHistory.removeFirst()
 
-        // 1. Check for swipe first (fast directional movement)
         if (positionHistory.size == HISTORY_SIZE) {
             val (startX, startY) = positionHistory.first()
             val (endX, endY) = positionHistory.last()
@@ -50,7 +43,6 @@ class GestureClassifier {
             }
         }
 
-        // 2. Check finger states (extended vs curled) for static gestures
         val thumbExtended = landmarks[4].y() < landmarks[3].y()
         val indexExtended = landmarks[8].y() < landmarks[6].y()
         val middleExtended = landmarks[12].y() < landmarks[10].y()
