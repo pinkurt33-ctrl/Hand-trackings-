@@ -31,27 +31,27 @@ class GestureAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Accessibility service interrupted")
     }
 
-    private fun toast(msg: String) {
+    private fun toastOnce(msg: String) {
         android.os.Handler(mainLooper).post {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private val debugCallback = object : GestureResultCallback() {
+    private val resultCallback = object : GestureResultCallback() {
         override fun onCompleted(gestureDescription: GestureDescription?) {
-            Log.d(TAG, "Gesture COMPLETED")
+            Log.d(TAG, "Gesture COMPLETED successfully")
         }
         override fun onCancelled(gestureDescription: GestureDescription?) {
-            Log.d(TAG, "Gesture CANCELLED")
-            toast("Jarvish: gesture CANCELLED by system")
+            Log.d(TAG, "Gesture CANCELLED by system")
+            toastOnce("Scroll/tap CANCEL ho gaya system se")
         }
     }
 
     fun performScroll(scrollDown: Boolean) {
         val displayMetrics = resources.displayMetrics
         val centerX = displayMetrics.widthPixels / 2f
-        val startY = if (scrollDown) displayMetrics.heightPixels * 0.75f else displayMetrics.heightPixels * 0.25f
-        val endY = if (scrollDown) displayMetrics.heightPixels * 0.25f else displayMetrics.heightPixels * 0.75f
+        val startY = if (scrollDown) displayMetrics.heightPixels * 0.85f else displayMetrics.heightPixels * 0.15f
+        val endY = if (scrollDown) displayMetrics.heightPixels * 0.15f else displayMetrics.heightPixels * 0.85f
 
         val path = Path().apply {
             moveTo(centerX, startY)
@@ -59,19 +59,19 @@ class GestureAccessibilityService : AccessibilityService() {
         }
 
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 300))
-        val dispatched = dispatchGesture(gestureBuilder.build(), debugCallback, null)
-        Log.d(TAG, "performScroll dispatch result: $dispatched")
-        if (!dispatched) toast("Jarvish: scroll dispatch FAILED")
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 200))
+        val ok = dispatchGesture(gestureBuilder.build(), resultCallback, null)
+        Log.d(TAG, "performScroll dispatched=$ok")
+        if (!ok) toastOnce("Scroll dispatch FAILED")
     }
 
     fun performTap(x: Float, y: Float) {
         val path = Path().apply { moveTo(x, y) }
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 100))
-        val dispatched = dispatchGesture(gestureBuilder.build(), debugCallback, null)
-        Log.d(TAG, "performTap dispatch result: $dispatched")
-        if (!dispatched) toast("Jarvish: tap dispatch FAILED")
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 80))
+        val ok = dispatchGesture(gestureBuilder.build(), resultCallback, null)
+        Log.d(TAG, "performTap dispatched=$ok")
+        if (!ok) toastOnce("Tap dispatch FAILED")
     }
 
     fun performSwipe(rightToLeft: Boolean) {
@@ -86,9 +86,9 @@ class GestureAccessibilityService : AccessibilityService() {
         }
 
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 300))
-        val dispatched = dispatchGesture(gestureBuilder.build(), debugCallback, null)
-        Log.d(TAG, "performSwipe dispatch result: $dispatched")
-        if (!dispatched) toast("Jarvish: swipe dispatch FAILED")
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 200))
+        val ok = dispatchGesture(gestureBuilder.build(), resultCallback, null)
+        Log.d(TAG, "performSwipe dispatched=$ok")
+        if (!ok) toastOnce("Swipe dispatch FAILED")
     }
 }
