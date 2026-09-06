@@ -38,7 +38,7 @@ class CameraGestureService : LifecycleService() {
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private var lastActionTime = 0L
-    private val ACTION_COOLDOWN_MS = 350
+    private val ACTION_COOLDOWN_MS = 100
     @Volatile private var isBusy = false
 
     override fun onCreate() {
@@ -101,6 +101,7 @@ class CameraGestureService : LifecycleService() {
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                .setTargetResolution(android.util.Size(480, 640))
                 .build()
 
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
